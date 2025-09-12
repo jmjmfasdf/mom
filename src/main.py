@@ -460,6 +460,163 @@ def evaluate_agent(agent, environment, env_name, num_rollouts, logger):
     return avg_reward, success_rate
 
 
+def run_evaluation_mode(agent, environment, env_name, num_episodes, logger, log_dir):
+    """Run evaluation mode with trajectory and activation saving"""
+    logger.info(f"Starting evaluation mode for {num_episodes} episodes")
+    
+    agent.eval_mode()
+    
+    all_trajectories = []
+    all_activations = []
+    episode_rewards = []
+    success_count = 0
+    
+    for episode in range(num_episodes):
+        episode_trajectory = []
+        episode_activations = []
+        
+        if env_name == 'tmaze':
+            observation = environment.reset()
+            hidden_state = agent.reset_hidden(1)
+            total_reward = 0
+            step_count = 0
+            max_steps = environment.horizon()
+            
+            while step_count < max_steps:
+                # Get action and hidden state
+                action, hidden_state = agent.get_action(observation, hidden_state, epsilon=0.0)
+                
+                # Store trajectory (s, a)
+                episode_trajectory.append({
+                    'state': observation.copy(),
+                    'action': action
+                })
+                
+                # Store activation (hidden state)
+                if hasattr(agent, 'model') and hasattr(agent.model, 'rnn'):
+                    # For RNN models, store hidden state
+                    if isinstance(hidden_state, tuple):
+                        episode_activations.append(hidden_state[0].detach().cpu().numpy())
+                    else:
+                        episode_activations.append(hidden_state.detach().cpu().numpy())
+                
+                # Take step
+                next_observation, reward, done, info = environment.step(action)
+                total_reward += reward
+                step_count += 1
+                observation = next_observation
+                
+                if done:
+                    if reward > 0:
+                        success_count += 1
+                    break
+            
+            # Add final reward to trajectory
+            if episode_trajectory:
+                episode_trajectory[-1]['reward'] = total_reward
+                
+        elif env_name == 'mdp':
+            # For Two-Step task
+            generator = TaskGenerator()
+            trials, conditions = generator.generate(
+                num_trials=1,
+                s1_duration=environment.task.s1_duration,
+                s2_duration=environment.task.s2_duration
+            )
+            
+            if trials:
+                trial_data = trials[0][0]
+                block = episode // 50 % 2
+                environment.configure_trial([trial_data], {
+                    'block': block,
+                    'choice': np.random.choice([0, 1]),
+                })
+                
+                observation = environment.reset()
+                hidden_state = agent.reset_hidden(1)
+                total_reward = 0
+                
+                # Debug info for first few episodes
+                if episode < 3:
+                    logger.info(f"Episode {episode}: block={block}, trial_data={trial_data}")
+                
+                # 5-slot structure: s1 -> a1 -> s2 -> a2 -> reward
+                for step in range(5):
+                    if step in [1, 3]:  # Action steps
+                        action, hidden_state = agent.get_action(observation, hidden_state, epsilon=0.0)
+                        
+                        # Store trajectory (s, a)
+                        episode_trajectory.append({
+                            'state': observation.copy(),
+                            'action': action
+                        })
+                        
+                        # Store activation
+                        if hasattr(agent, 'model') and hasattr(agent.model, 'rnn'):
+                            if isinstance(hidden_state, tuple):
+                                episode_activations.append(hidden_state[0].detach().cpu().numpy())
+                            else:
+                                episode_activations.append(hidden_state.detach().cpu().numpy())
+                    else:
+                        action = 0  # No action for non-action steps
+                        episode_trajectory.append({
+                            'state': observation.copy(),
+                            'action': action
+                        })
+                    
+                    observation, reward, done, info = environment.step(action)
+                    total_reward += reward
+                    
+                    # Debug info for first few episodes
+                    if episode < 3:
+                        logger.info(f"  Step {step}: action={action}, reward={reward}, done={done}, time_step={info.get('time_step', 'N/A')}")
+                    
+                    if done:
+                        break
+                
+                # Add final reward to all steps
+                for step_data in episode_trajectory:
+                    step_data['reward'] = total_reward
+                
+                # Check if winning
+                is_winning = environment.is_winning()
+                if is_winning:
+                    success_count += 1
+                
+                # Debug info for first few episodes
+                if episode < 3:
+                    logger.info(f"  Final: total_reward={total_reward}, is_winning={is_winning}, task_info={info.get('task_info', {})}")
+        
+        all_trajectories.append(episode_trajectory)
+        all_activations.append(episode_activations)
+        episode_rewards.append(total_reward)
+        
+        # Log progress
+        if (episode + 1) % 10 == 0:
+            logger.info(f"Evaluation Episode {episode + 1}/{num_episodes}, "
+                       f"Avg Reward: {np.mean(episode_rewards):.3f}, "
+                       f"Success Rate: {success_count/(episode+1):.3f}")
+    
+    # Calculate final metrics
+    avg_reward = np.mean(episode_rewards)
+    success_rate = success_count / num_episodes
+    
+    logger.info(f"Evaluation Complete - Avg Reward: {avg_reward:.3f}, Success Rate: {success_rate:.3f}")
+    
+    # Save trajectories
+    trajectory_file = os.path.join(log_dir, f"trajectories_{env_name}.npz")
+    np.savez(trajectory_file, trajectories=all_trajectories)
+    logger.info(f"Trajectories saved to {trajectory_file}")
+    
+    # Save activations
+    activation_file = os.path.join(log_dir, f"activations_{env_name}.npz")
+    np.savez(activation_file, activations=all_activations)
+    logger.info(f"Activations saved to {activation_file}")
+    
+    agent.train_mode()
+    return avg_reward, success_rate
+
+
 def main():
     """Main function"""
     # Parse arguments
@@ -477,7 +634,65 @@ def main():
     # Set random seeds
     set_random_seeds(training_config.seed)
     
-    # Setup experiment name
+    # Check if this is evaluation mode
+    if args.preload:
+        # Evaluation mode
+        experiment_name = f"eval_{args.model}_{args.environment}_{int(time.time())}"
+        logger, log_dir = setup_logging(experiment_name)
+        
+        logger.info(f"Starting evaluation mode: {experiment_name}")
+        logger.info(f"Preloading model from: {args.preload}")
+        logger.info(f"Model: {args.model}, Environment: {args.environment}")
+        logger.info(f"Evaluation episodes: {args.eval_num_episodes}")
+        
+        # Check CUDA availability
+        cuda_available = torch.cuda.is_available() and training_config.cuda
+        if cuda_available:
+            logger.info("Using CUDA")
+        else:
+            logger.info("Using CPU")
+        
+        # Create environment
+        environment = create_environment(args.environment, env_config, args)
+        logger.info(f"Created environment: {environment.__class__.__name__}")
+        
+        # Create agent
+        agent = create_agent(
+            args.model, 
+            model_config, 
+            environment.get_observation_space(), 
+            environment.get_action_space(),
+            cuda_available
+        )
+        logger.info(f"Created agent: {agent.__class__.__name__}")
+        
+        # Load model - prepend logs/ if not already present
+        model_path = args.preload
+        if not model_path.startswith('logs/'):
+            model_path = os.path.join('logs', model_path)
+        
+        agent.load_model(model_path)
+        logger.info(f"Model loaded from {model_path}")
+        
+        # Run evaluation
+        avg_reward, success_rate = run_evaluation_mode(
+            agent, environment, args.environment, args.eval_num_episodes, logger, log_dir
+        )
+        
+        # Final summary
+        logger.info("="*50)
+        logger.info("EVALUATION SUMMARY")
+        logger.info("="*50)
+        logger.info(f"Model: {args.model}")
+        logger.info(f"Environment: {args.environment}")
+        logger.info(f"Evaluation Episodes: {args.eval_num_episodes}")
+        logger.info(f"Avg Reward: {avg_reward:.3f}")
+        logger.info(f"Success Rate: {success_rate:.3f}")
+        logger.info("="*50)
+        
+        return
+    
+    # Training mode
     experiment_name = args.name if args.name else f"{args.model}_{args.environment}_{int(time.time())}"
     
     # Setup logging

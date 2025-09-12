@@ -1,0 +1,21 @@
+2025-09-12 11:23:05,172 - INFO - Starting evaluation mode: eval_drqn_tmaze_1757643785
+2025-09-12 11:23:05,172 - INFO - Preloading model from: test_tmaze/test_tmaze_final.pt
+2025-09-12 11:23:05,172 - INFO - Model: drqn, Environment: tmaze
+2025-09-12 11:23:05,172 - INFO - Evaluation episodes: 5
+2025-09-12 11:23:05,172 - INFO - Using CPU
+2025-09-12 11:23:05,173 - INFO - Created environment: TMazeEnvironment
+2025-09-12 11:23:05,716 - INFO - Created agent: DRQNAgent
+2025-09-12 11:23:05,720 - INFO - Model loaded from logs/test_tmaze/test_tmaze_final.pt
+2025-09-12 11:23:05,720 - INFO - Starting evaluation mode for 5 episodes
+2025-09-12 11:23:05,731 - INFO - Evaluation Complete - Avg Reward: -1.100, Success Rate: 0.000
+2025-09-12 11:23:05,731 - INFO - Trajectories saved to logs/eval_drqn_tmaze_1757643785/trajectories_tmaze.npz
+2025-09-12 11:23:05,732 - INFO - Activations saved to logs/eval_drqn_tmaze_1757643785/activations_tmaze.npz
+2025-09-12 11:23:05,732 - INFO - ==================================================
+2025-09-12 11:23:05,732 - INFO - EVALUATION SUMMARY
+2025-09-12 11:23:05,732 - INFO - ==================================================
+2025-09-12 11:23:05,732 - INFO - Model: drqn
+2025-09-12 11:23:05,732 - INFO - Environment: tmaze
+2025-09-12 11:23:05,732 - INFO - Evaluation Episodes: 5
+2025-09-12 11:23:05,732 - INFO - Avg Reward: -1.100
+2025-09-12 11:23:05,732 - INFO - Success Rate: 0.000
+2025-09-12 11:23:05,732 - INFO - ==================================================

@@ -211,11 +211,37 @@ class GRUAgent(BaseAgent):
             batch_size = self.batch_size
         self.hidden_state = self.model.init_hidden(batch_size)
         
-    def get_action(self, observation, training=True):
-        """Get action from observation (not used in GRU training)"""
-        # GRU model doesn't use this method for action selection
-        # It's trained on sequences, not individual actions
-        return 0
+    def get_action(self, observation, hidden_state=None, epsilon=0.0):
+        """Get action from observation"""
+        # For GRU model, we need to process the observation through the model
+        # to get a meaningful action prediction
+        
+        if hidden_state is None:
+            hidden_state = self.model.init_hidden(1)
+        
+        # Convert observation to tensor if needed
+        if not isinstance(observation, torch.Tensor):
+            observation = torch.FloatTensor(observation).unsqueeze(0).unsqueeze(0)  # (1, 1, obs_size)
+        
+        # Forward pass through model
+        with torch.no_grad():
+            output, new_hidden_state = self.model(observation, hidden_state, bsz=1)
+            
+        # Convert output to action (binary choice for MDP)
+        # Take the last output and convert to action
+        action_probs = output[-1, 0, :]  # (action_size,)
+        
+        # For MDP environment, we need binary actions (0 or 1)
+        # Use sigmoid to get probability, then threshold
+        if action_probs.size(0) >= 2:
+            # If we have multiple outputs, use the first one as probability
+            prob = torch.sigmoid(action_probs[0]).item()
+            action = 1 if prob > 0.5 else 0
+        else:
+            # Fallback to argmax but ensure binary
+            action = min(torch.argmax(action_probs).item(), 1)
+        
+        return action, new_hidden_state
         
     def eval_mode(self):
         """Set model to evaluation mode"""

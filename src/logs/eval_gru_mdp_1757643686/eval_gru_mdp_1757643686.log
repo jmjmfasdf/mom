@@ -1,0 +1,69 @@
+2025-09-12 11:21:26,259 - INFO - Starting evaluation mode: eval_gru_mdp_1757643686
+2025-09-12 11:21:26,259 - INFO - Preloading model from: test_save/test_save_final.pt
+2025-09-12 11:21:26,259 - INFO - Model: gru, Environment: mdp
+2025-09-12 11:21:26,259 - INFO - Evaluation episodes: 5
+2025-09-12 11:21:26,259 - INFO - Using CPU
+2025-09-12 11:21:26,259 - INFO - Created environment: MDPEnvironment
+2025-09-12 11:21:26,815 - INFO - Created agent: GRUAgent
+2025-09-12 11:21:26,817 - INFO - Model loaded from logs/test_save/test_save_final.pt
+2025-09-12 11:21:26,817 - INFO - Starting evaluation mode for 5 episodes
+2025-09-12 11:21:26,818 - INFO - Episode 0: block=0, trial_data=[[0.37454012 0.95071431 0.73199394 0.59865848 0.15601864 0.15599452
+  0.05808361 0.86617615 0.60111501 0.70807258]
+ [0.02058449 0.96990985 0.83244264 0.21233911 0.18182497 0.18340451
+  0.30424224 0.52475643 0.43194502 0.29122914]
+ [0.61185289 0.13949386 0.29214465 0.36636184 0.45606998 0.78517596
+  0.19967378 0.51423444 0.59241457 0.04645041]
+ [0.60754485 0.17052412 0.06505159 0.94888554 0.96563203 0.80839735
+  0.30461377 0.09767211 0.68423303 0.44015249]
+ [0.12203823 0.49517691 0.03438852 0.9093204  0.25877998 0.66252228
+  0.31171108 0.52006802 0.54671028 0.18485446]]
+2025-09-12 11:21:26,818 - INFO -   Step 0: action=0, reward=0.0, done=False, time_step=0
+2025-09-12 11:21:26,818 - INFO -   Step 1: action=1, reward=0.0, done=False, time_step=1
+2025-09-12 11:21:26,818 - INFO -   Step 2: action=0, reward=0.0, done=False, time_step=2
+2025-09-12 11:21:26,819 - INFO -   Step 3: action=1, reward=0.0, done=False, time_step=3
+2025-09-12 11:21:26,819 - INFO -   Step 4: action=0, reward=0.0, done=True, time_step=4
+2025-09-12 11:21:26,819 - INFO -   Final: total_reward=0.0, is_winning=0, task_info={'choice1': 1, 'choice2': 1, 'choice': 1, 'stage2': 1, 'reward': 0, 'common': False, 'block': 0, 'completed': True}
+2025-09-12 11:21:26,819 - INFO - Episode 1: block=0, trial_data=[[0.727272   0.32654077 0.57044397 0.52083426 0.96117202 0.84453385
+  0.74732011 0.53969213 0.58675117 0.96525531]
+ [0.60703425 0.27599918 0.29627351 0.16526694 0.01563641 0.42340148
+  0.39488152 0.29348817 0.01407982 0.1988424 ]
+ [0.71134195 0.79017554 0.60595997 0.92630088 0.65107703 0.91495968
+  0.85003858 0.44945067 0.09541012 0.37081825]
+ [0.66884125 0.66592236 0.59129779 0.27472179 0.56124343 0.38292687
+  0.9717121  0.84891382 0.72172952 0.23598492]
+ [0.25606832 0.04043359 0.71066289 0.11089082 0.4393365  0.2017192
+  0.8957636  0.47537022 0.56327557 0.69551609]]
+2025-09-12 11:21:26,819 - INFO -   Step 0: action=0, reward=0.0, done=False, time_step=0
+2025-09-12 11:21:26,820 - INFO -   Step 1: action=1, reward=0.0, done=False, time_step=1
+2025-09-12 11:21:26,820 - INFO -   Step 2: action=0, reward=0.0, done=False, time_step=2
+2025-09-12 11:21:26,820 - INFO -   Step 3: action=1, reward=0.0, done=False, time_step=3
+2025-09-12 11:21:26,820 - INFO -   Step 4: action=0, reward=1.0, done=True, time_step=4
+2025-09-12 11:21:26,820 - INFO -   Final: total_reward=1.0, is_winning=1, task_info={'choice1': 1, 'choice2': 1, 'choice': 1, 'stage2': 2, 'reward': 1, 'common': np.False_, 'block': 0, 'completed': True}
+2025-09-12 11:21:26,820 - INFO - Episode 2: block=0, trial_data=[[0.07697991 0.28975145 0.16122129 0.92969765 0.80812038 0.63340376
+  0.87146059 0.80367208 0.18657006 0.892559  ]
+ [0.53934224 0.80744016 0.8960913  0.31800347 0.11005192 0.22793516
+  0.42710779 0.81801477 0.86073058 0.00695213]
+ [0.5107473  0.417411   0.22210781 0.11986537 0.33761517 0.9429097
+  0.32320293 0.51879062 0.70301896 0.3636296 ]
+ [0.97178208 0.96244729 0.2517823  0.49724851 0.30087831 0.28484049
+  0.03688695 0.60956433 0.50267902 0.05147875]
+ [0.27864646 0.90826589 0.23956189 0.14489487 0.48945276 0.98565045
+  0.24205527 0.67213555 0.76161962 0.23763754]]
+2025-09-12 11:21:26,820 - INFO -   Step 0: action=0, reward=0.0, done=False, time_step=0
+2025-09-12 11:21:26,821 - INFO -   Step 1: action=1, reward=0.0, done=False, time_step=1
+2025-09-12 11:21:26,821 - INFO -   Step 2: action=0, reward=0.0, done=False, time_step=2
+2025-09-12 11:21:26,821 - INFO -   Step 3: action=1, reward=0.0, done=False, time_step=3
+2025-09-12 11:21:26,821 - INFO -   Step 4: action=0, reward=1.0, done=True, time_step=4
+2025-09-12 11:21:26,821 - INFO -   Final: total_reward=1.0, is_winning=1, task_info={'choice1': 1, 'choice2': 1, 'choice': 1, 'stage2': 2, 'reward': 1, 'common': np.False_, 'block': 0, 'completed': True}
+2025-09-12 11:21:26,822 - INFO - Evaluation Complete - Avg Reward: 0.600, Success Rate: 0.600
+2025-09-12 11:21:26,823 - INFO - Trajectories saved to logs/eval_gru_mdp_1757643686/trajectories_mdp.npz
+2025-09-12 11:21:26,823 - INFO - Activations saved to logs/eval_gru_mdp_1757643686/activations_mdp.npz
+2025-09-12 11:21:26,823 - INFO - ==================================================
+2025-09-12 11:21:26,823 - INFO - EVALUATION SUMMARY
+2025-09-12 11:21:26,823 - INFO - ==================================================
+2025-09-12 11:21:26,823 - INFO - Model: gru
+2025-09-12 11:21:26,823 - INFO - Environment: mdp
+2025-09-12 11:21:26,823 - INFO - Evaluation Episodes: 5
+2025-09-12 11:21:26,823 - INFO - Avg Reward: 0.600
+2025-09-12 11:21:26,823 - INFO - Success Rate: 0.600
+2025-09-12 11:21:26,823 - INFO - ==================================================

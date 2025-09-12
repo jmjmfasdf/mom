@@ -217,6 +217,10 @@ def create_parser():
     parser.add_argument('--save-dir', type=str, default='./models', help='Model save directory')
     parser.add_argument('--name', type=str, help='Experiment name')
     
+    # Evaluation mode
+    parser.add_argument('--preload', type=str, help='Path to model checkpoint for evaluation mode (e.g., logs/test_save/test_save_final.pt)')
+    parser.add_argument('--eval-num-episodes', type=int, default=100, help='Number of episodes for evaluation mode (default: 100)')
+    
     return parser
 
 
