@@ -85,12 +85,15 @@ class ReplayBuffer:
         indices = np.random.choice(len(self.buffer), batch_size, replace=False)
         trajectories = [self.buffer[i] for i in indices]
         
-        batch_observations = []
-        batch_actions = []
-        batch_rewards = []
-        batch_dones = []
+        # Pre-allocate arrays for better performance
+        max_seq_len = min(sequence_length, max(len(t.observations) for t in trajectories))
+        batch_observations = np.zeros((batch_size, max_seq_len, trajectories[0].observations[0].shape[0]), dtype=np.float32)
+        batch_actions = np.zeros((batch_size, max_seq_len), dtype=np.int64)
+        batch_rewards = np.zeros((batch_size, max_seq_len), dtype=np.float32)
+        batch_dones = np.zeros((batch_size, max_seq_len), dtype=bool)
+        batch_lengths = np.zeros(batch_size, dtype=np.int32)
         
-        for trajectory in trajectories:
+        for i, trajectory in enumerate(trajectories):
             # Sample random sequence from trajectory
             if len(trajectory.observations) > sequence_length:
                 start_idx = np.random.randint(0, len(trajectory.observations) - sequence_length)
@@ -98,17 +101,23 @@ class ReplayBuffer:
             else:
                 start_idx = 0
                 end_idx = len(trajectory.observations)
-                
-            batch_observations.append(trajectory.observations[start_idx:end_idx])
-            batch_actions.append(trajectory.actions[start_idx:end_idx])
-            batch_rewards.append(trajectory.rewards[start_idx:end_idx])
-            batch_dones.append(trajectory.dones[start_idx:end_idx])
+            
+            seq_len = end_idx - start_idx
+            batch_lengths[i] = seq_len
+            
+            # Convert to numpy arrays efficiently
+            obs_array = np.array(trajectory.observations[start_idx:end_idx], dtype=np.float32)
+            batch_observations[i, :seq_len] = obs_array
+            batch_actions[i, :seq_len] = np.array(trajectory.actions[start_idx:end_idx], dtype=np.int64)
+            batch_rewards[i, :seq_len] = np.array(trajectory.rewards[start_idx:end_idx], dtype=np.float32)
+            batch_dones[i, :seq_len] = np.array(trajectory.dones[start_idx:end_idx], dtype=bool)
         
         return {
             'observations': batch_observations,
             'actions': batch_actions,
             'rewards': batch_rewards,
-            'dones': batch_dones
+            'dones': batch_dones,
+            'lengths': batch_lengths
         }
 
     def __len__(self):
@@ -122,7 +131,7 @@ class DRQNAgent(BaseAgent):
 
     def __init__(self, observation_size, action_size, hidden_size=32, num_layers=2,
                  cell='gru', learning_rate=1e-3, gamma=0.98, epsilon=0.2,
-                 buffer_capacity=8192, target_update_freq=10):
+                 buffer_capacity=8192, target_update_freq=10, sequence_length=20, cuda_enabled=False):
         super().__init__(observation_size, action_size, hidden_size, num_layers)
         
         self.cell = cell
@@ -130,6 +139,8 @@ class DRQNAgent(BaseAgent):
         self.gamma = gamma
         self.epsilon = epsilon
         self.target_update_freq = target_update_freq
+        self.sequence_length = sequence_length
+        self.cuda_enabled = cuda_enabled
         self.step_count = 0
         
         # Initialize Q network and target Q network
@@ -146,6 +157,14 @@ class DRQNAgent(BaseAgent):
             hidden_size=hidden_size,
             num_layers=num_layers,
         )
+        
+        # Move to CUDA if enabled
+        if cuda_enabled and torch.cuda.is_available():
+            self.Q = self.Q.cuda()
+            self.Q_tar = self.Q_tar.cuda()
+            self.device = torch.device('cuda')
+        else:
+            self.device = torch.device('cpu')
         
         # Initialize optimizers
         self.optimizer = torch.optim.Adam(self.Q.parameters(), lr=learning_rate)
@@ -177,14 +196,15 @@ class DRQNAgent(BaseAgent):
         # Epsilon-greedy action selection
         if random() < epsilon:
             action = np.random.randint(self.action_size)
+            new_hidden = hidden_state  # keep hidden state unchanged on random action
         else:
             with torch.no_grad():
                 # Prepare input (observation + previous action)
-                prev_action = torch.zeros(self.action_size)
+                prev_action = torch.zeros(self.action_size, device=self.device)
                 if hasattr(self, 'last_action') and self.last_action is not None:
                     prev_action[self.last_action] = 1.0
                     
-                obs_tensor = torch.FloatTensor(observation)
+                obs_tensor = torch.FloatTensor(observation).to(self.device)
                 input_tensor = torch.cat([prev_action, obs_tensor]).unsqueeze(0).unsqueeze(0)
                 
                 # Forward pass
@@ -192,7 +212,8 @@ class DRQNAgent(BaseAgent):
                 action = torch.argmax(q_values, dim=-1).item()
                 
         self.last_action = action
-        return action, hidden_state
+        # Return the updated hidden state so callers can propagate it
+        return action, new_hidden
 
     def train_step(self, batch_data):
         """
@@ -202,30 +223,38 @@ class DRQNAgent(BaseAgent):
             return 0.0
             
         # Sample batch from replay buffer
-        batch = self.replay_buffer.sample(batch_size=32, sequence_length=20)
+        batch = self.replay_buffer.sample(batch_size=32, sequence_length=self.sequence_length)
         
+        # Convert to tensors efficiently (batch processing)
+        obs_tensor = torch.FloatTensor(batch['observations']).to(self.device)  # (batch_size, seq_len, obs_dim)
+        action_tensor = torch.LongTensor(batch['actions']).to(self.device)     # (batch_size, seq_len)
+        reward_tensor = torch.FloatTensor(batch['rewards']).to(self.device)    # (batch_size, seq_len)
+        done_tensor = torch.BoolTensor(batch['dones']).to(self.device)         # (batch_size, seq_len)
+        lengths = batch['lengths']  # (batch_size,)
+        
+        batch_size, max_seq_len = obs_tensor.shape[:2]
         total_loss = 0.0
+        valid_samples = 0
         
-        for i in range(len(batch['observations'])):
-            obs_seq = torch.FloatTensor(batch['observations'][i])
-            action_seq = torch.LongTensor(batch['actions'][i])
-            reward_seq = torch.FloatTensor(batch['rewards'][i])
-            done_seq = torch.BoolTensor(batch['dones'][i])
-            
-            seq_len = len(obs_seq)
+        for i in range(batch_size):
+            seq_len = lengths[i]
             if seq_len < 2:
                 continue
                 
-            # Prepare input sequences
-            input_seq = []
-            for t in range(seq_len):
-                prev_action = torch.zeros(self.action_size)
-                if t > 0:
-                    prev_action[action_seq[t-1]] = 1.0
-                input_t = torch.cat([prev_action, obs_seq[t]])
-                input_seq.append(input_t)
+            # Extract sequence for this sample
+            obs_seq = obs_tensor[i, :seq_len]  # (seq_len, obs_dim)
+            action_seq = action_tensor[i, :seq_len]  # (seq_len,)
+            reward_seq = reward_tensor[i, :seq_len]  # (seq_len,)
+            done_seq = done_tensor[i, :seq_len]  # (seq_len,)
                 
-            input_seq = torch.stack(input_seq).unsqueeze(1)  # (seq_len, 1, input_size)
+            # Prepare input sequences efficiently
+            input_seq = torch.zeros(seq_len, self.action_size + obs_seq.shape[1], device=self.device)
+            for t in range(seq_len):
+                if t > 0:
+                    input_seq[t, action_seq[t-1]] = 1.0  # One-hot previous action
+                input_seq[t, self.action_size:] = obs_seq[t]  # Current observation
+                
+            input_seq = input_seq.unsqueeze(1)  # (seq_len, 1, input_size)
             
             # Forward pass through Q network
             q_values, _ = self.Q(input_seq, None)
@@ -253,6 +282,7 @@ class DRQNAgent(BaseAgent):
             # Calculate loss
             loss = F.mse_loss(q_values[:-1], targets[:-1])
             total_loss += loss.item()
+            valid_samples += 1
             
             # Backward pass
             self.optimizer.zero_grad()
@@ -265,7 +295,7 @@ class DRQNAgent(BaseAgent):
         if self.step_count % self.target_update_freq == 0:
             self.update_target_network()
             
-        return total_loss / len(batch['observations']) if batch['observations'] else 0.0
+        return total_loss / valid_samples if valid_samples > 0 else 0.0
 
     def store_trajectory(self, observations, actions, rewards, dones):
         """Store trajectory in replay buffer"""
@@ -275,11 +305,11 @@ class DRQNAgent(BaseAgent):
     def reset_hidden(self, batch_size=1):
         """Reset hidden state"""
         if self.cell == 'gru':
-            hidden = torch.zeros(self.num_layers, batch_size, self.hidden_size)
+            hidden = torch.zeros(self.num_layers, batch_size, self.hidden_size, device=self.device)
             return (hidden,)
         elif self.cell == 'lstm':
-            hidden = torch.zeros(self.num_layers, batch_size, self.hidden_size)
-            cell = torch.zeros(self.num_layers, batch_size, self.hidden_size)
+            hidden = torch.zeros(self.num_layers, batch_size, self.hidden_size, device=self.device)
+            cell = torch.zeros(self.num_layers, batch_size, self.hidden_size, device=self.device)
             return (hidden, cell)
 
     def save_model(self, path):

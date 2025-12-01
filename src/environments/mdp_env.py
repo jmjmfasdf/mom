@@ -1,9 +1,12 @@
 """
-MDP Task Environment - 5-Slot Structure
-s1 → a1 → s2 → a2 → reward
+MDP Two-Step Task Environment (event-driven)
+Stage 1: show s1 until agent picks a1
+Stage 2: show s2 (B1/B2) until agent picks a2
+Then deliver reward and terminate.
 
-Adapted from Sequence_learning-master project.
-Maintains original logic while implementing unified interface.
+Transition parameter `trans_prob` is the probability of an undesired transition:
+- If a1 selects the path toward B1, go to B2 with probability trans_prob (undesired),
+  otherwise to B1 with probability 1 - trans_prob (desired). Symmetric for selecting B2.
 """
 
 import copy
@@ -12,112 +15,110 @@ from .base_env import BaseEnvironment
 
 
 class TwoStepTask:
+    """Event-driven Two-Step Task with minimal observations.
+
+    Observation channels (n_input = 3): [s1, s2_B1, s2_B2]
+    Phases:
+      - phase = 0: show s1 (1,0,0) until agent picks a1 in {0,1}
+      - phase = 1: show s2 one-hot depending on transition; wait for a2 in {0,1}
+      - phase = 2: terminal; reward exposed via step() return
     """
-    Two-Step Task with 5-slot structure
-    Slot 0: s1 (Stage 1 stimulus)
-    Slot 1: a1 (Stage 1 action) 
-    Slot 2: s2 (Stage 2 stimulus)
-    Slot 3: a2 (Stage 2 action)
-    Slot 4: reward
-    """
-    
-    def __init__(self, s1_duration=1, s2_duration=1, trans_prob=0.8, reward_prob=0.8, **kwargs):
-        # Fixed 5-slot structure (s1_duration and s2_duration kept for compatibility)
-        self.trial_length = 5
-        self.n_input = 10
-        
+
+    def __init__(self, s1_duration=1, s2_duration=1, trans_prob=0.2, reward_prob=0.8, **kwargs):
+        # durations kept for compatibility but unused
+        self.n_input = 3
+
         # Task parameters
-        self.trans_prob = trans_prob  # A1->B1, A2->B2 probability
-        self.reward_prob = reward_prob  # B1/B2 -> reward probability
+        self.trans_prob = trans_prob  # probability of undesired transition
+        self.reward_prob = reward_prob  # probability of reward in high-reward stage
         self.block_size = 50
-        
-        # Task state
-        self.completed = None
-        self.trial_end = None
-        self.reward = None
-        self.choice1 = None  # 0: A1, 1: A2 (Stage 1 choice)
-        self.choice2 = None  # 0: A1, 1: A2 (Stage 2 choice)
+
+        # Trial state
+        self.block = 0
+        self.phase = 0
         self.stage2 = None  # 1: B1, 2: B2
-        self.common = None  # Whether transition was common
-        
-        self.time_step = -1
-        self.block = None  # Current block (0: B1 high reward, 1: B2 high reward)
-        
-        # Action timing - only at slots 1 and 3
-        self.action_slots = [1, 3]
-        
-        # Compatibility attributes
-        self.s1_duration = s1_duration
-        self.s2_duration = s2_duration
-        self.choice = None  # For backward compatibility
-        self.chosen = None
-        
-    def configure(self, trial_data, trial_settings):
-        """Configure trial with new structure"""
-        self.states_pool = trial_data[0].tolist()
-        
-        # Get trial parameters from settings
-        self.block = trial_settings.get('block', 0)
-        self.choice1 = trial_settings.get('choice1', trial_settings.get('choice', np.random.choice([0, 1])))
-        
-        # Calculate stage 2 based on choice1 and transition probability
-        trans_prob_actual = self.trans_prob if self.choice1 == 0 else (1 - self.trans_prob)
-        self.stage2 = 1 if trans_prob_actual > np.random.rand() else 2
-        
-        # Calculate reward probability based on block and stage2
-        if self.stage2 == 1:  # B1
-            reward_prob_actual = self.reward_prob if self.block == 0 else (1 - self.reward_prob)
-        else:  # B2
-            reward_prob_actual = (1 - self.reward_prob) if self.block == 0 else self.reward_prob
-            
-        # Determine reward
-        self.reward = 1 if reward_prob_actual > np.random.rand() else 0
-        
-        # Check if transition was common
-        self.common = (self.choice1 == 0 and self.stage2 == 1) or (self.choice1 == 1 and self.stage2 == 2)
-        
-        self.trial_end = False
-        self.time_step = -1
-        self.completed = None
+        self.choice1 = None
         self.choice2 = None
-        self.chosen = False
-        
-        # Backward compatibility
-        self.choice = self.choice1
-        
+        self.reward = None
+        self.completed = False
+        self.common = None  # whether transition followed desired mapping
+        self.choice = None  # backward-compat alias for choice1
+
+    def reset(self):
+        self.phase = 0
+        self.stage2 = None
+        self.choice1 = None
+        self.choice2 = None
+        self.reward = None
+        self.completed = False
+        self.common = None
+        self.choice = None
+        return np.array([1.0, 0.0, 0.0], dtype=float)  # s1
+
+    def configure(self, trial_data, trial_settings):
+        # Configure block; ignore any durations or precomputed sequences
+        self.block = trial_settings.get('block', 0)
+        return self.reset()
+
+    def _observe(self):
+        if self.phase == 0:
+            return np.array([1.0, 0.0, 0.0], dtype=float)
+        elif self.phase == 1:
+            if self.stage2 == 1:
+                return np.array([0.0, 1.0, 0.0], dtype=float)
+            elif self.stage2 == 2:
+                return np.array([0.0, 0.0, 1.0], dtype=float)
+            else:
+                return np.zeros(self.n_input, dtype=float)
+        else:
+            return np.zeros(self.n_input, dtype=float)
+
+    def _sample_stage2(self, choice1):
+        # Desired mapping: choice1==0 prefers B1, choice1==1 prefers B2
+        undesired = np.random.rand() < self.trans_prob
+        if choice1 == 0:
+            self.common = not undesired
+            return 2 if undesired else 1
+        else:
+            self.common = not undesired
+            return 1 if undesired else 2
+
+    def _sample_reward(self):
+        # block 0: B1 high reward, block 1: B2 high reward
+        if self.stage2 == 1:  # B1
+            p = self.reward_prob if self.block == 0 else (1 - self.reward_prob)
+        else:  # B2
+            p = (1 - self.reward_prob) if self.block == 0 else self.reward_prob
+        return 1 if np.random.rand() < p else 0
+
     def step(self, action):
-        """Execute one step with 5-slot structure"""
-        self.time_step += 1
-        
-        if self.time_step < len(self.states_pool):
-            next_sensory_inputs = self.states_pool[self.time_step]
-            
-            # Check if it's action time
-            if self.time_step in self.action_slots:
-                if self.time_step == 1:  # Stage 1 action
-                    if action in (0, 1):  # Valid choice (A1 or A2)
-                        self.choice1 = action
-                        self.chosen = True
-                        # Backward compatibility
-                        self.choice = self.choice1
-                    else:
-                        # Invalid choice - trial fails
-                        self.reward = 0
-                elif self.time_step == 3:  # Stage 2 action
-                    if action in (0, 1):  # Valid choice (A1 or A2)
-                        self.choice2 = action
-                    else:
-                        # Invalid choice - trial fails
-                        self.reward = 0
-                        
-            # Check if trial is complete
-            if self.time_step >= self.trial_length - 1:
-                self.trial_end = True
+        if self.phase == 0:
+            # Expect a1 in {0,1}
+            if action in (0, 1):
+                self.choice1 = action
+                self.choice = action
+                self.stage2 = self._sample_stage2(self.choice1)
+                self.phase = 1
+                obs = self._observe()
+                return obs, 0.0, False, {'phase': self.phase}
+            else:
+                # ignore invalid action, keep s1
+                return self._observe(), 0.0, False, {'phase': self.phase}
+        elif self.phase == 1:
+            # Expect a2 in {0,1}
+            if action in (0, 1):
+                self.choice2 = action
+                self.reward = self._sample_reward()
+                self.phase = 2
                 self.completed = True
-                
-            return self.trial_end, next_sensory_inputs
-            
-        return True, np.zeros(self.n_input)
+                return self._observe(), float(self.reward), True, {'phase': self.phase}
+            else:
+                return self._observe(), 0.0, False, {'phase': self.phase}
+        else:
+            # Terminal
+            return self._observe(), 0.0, True, {'phase': self.phase}
+        
+    
     
     def is_winning(self):
         """Check if won"""
@@ -149,11 +150,11 @@ class MDPEnvironment(BaseEnvironment):
     def __init__(self, **kwargs):
         # Only support two-step task
         self.task = TwoStepTask(**kwargs)
-        self.observation_size = 10
+        self.observation_size = self.task.n_input
         self.action_size = 2  # 0: A1, 1: A2
-            
+
         super().__init__(self.observation_size, self.action_size)
-        
+
         # Current state
         self.current_observation = None
         self.done = False
@@ -163,21 +164,14 @@ class MDPEnvironment(BaseEnvironment):
         """Reset environment"""
         self.done = False
         self.episode_reward = 0
-        self.current_observation = np.zeros(self.observation_size)
+        self.current_observation = self.task.reset()
         return self.current_observation
         
     def configure_trial(self, trial_data, trial_settings):
         """Configure environment with trial data"""
-        self.task.configure(trial_data, trial_settings)
         self.done = False
         self.episode_reward = 0
-        
-        # Get initial observation
-        if len(self.task.states_pool) > 0:
-            self.current_observation = np.array(self.task.states_pool[0])
-        else:
-            self.current_observation = np.zeros(self.observation_size)
-            
+        self.current_observation = self.task.configure(trial_data, trial_settings)
         return self.current_observation
     
     def step(self, action):
@@ -186,27 +180,10 @@ class MDPEnvironment(BaseEnvironment):
             return self.current_observation, 0.0, True, {}
             
         # Execute step in task
-        trial_end, next_observation = self.task.step(action)
-        
-        # Update state
+        next_observation, reward, self.done, info = self.task.step(action)
         self.current_observation = np.array(next_observation)
-        
-        # Get reward (only at slot 4)
-        reward = 0.0
-        if self.task.reward is not None and self.task.time_step == 4:
-            reward = float(self.task.reward)
-            self.episode_reward += reward
-            
-        # Check if done
-        self.done = trial_end
-        
-        # Prepare info
-        info = {
-            'task_info': self.task.extract_trial_abstract() if hasattr(self.task, 'extract_trial_abstract') else {},
-            'episode_reward': self.episode_reward,
-            'time_step': self.task.time_step
-        }
-        
+        self.episode_reward += reward
+        info.update({'episode_reward': self.episode_reward})
         return self.current_observation, reward, self.done, info
     
     def get_observation_space(self):
@@ -218,12 +195,19 @@ class MDPEnvironment(BaseEnvironment):
         return self.action_size
     
     def is_winning(self):
-        """Check if current trial is winning"""
-        return self.task.is_winning()
+        """Success if agent reached the high-reward stage, regardless of sampled reward.
+
+        Block 0: target stage is B1 (stage2 == 1)
+        Block 1: target stage is B2 (stage2 == 2)
+        """
+        if self.task.stage2 is None:
+            return 0
+        target_stage = 1 if self.task.block == 0 else 2
+        return 1 if self.task.stage2 == target_stage else 0
     
     def is_completed(self):
         """Check if current trial is completed"""
-        return self.task.is_completed()
+        return 1 if self.task.completed else 0
         
     def render(self):
         """Render current state"""
@@ -242,24 +226,7 @@ class TaskGenerator:
         pass
         
     def generate(self, num_trials=1, s1_duration=1, s2_duration=1):
-        """Generate trials for the two-step task"""
-        trials = []
-        conditions = []
-        
-        for _ in range(num_trials):
-            # Fixed 5-slot trial length
-            trial_length = 5
-            
-            # Generate dummy two-step trial with proper length
-            trial_data = [np.random.random((trial_length, 10))]  # 10 inputs
-            condition = {
-                'block': np.random.choice([0, 1]),  # 0: B1 high reward, 1: B2 high reward
-                'choice1': np.random.choice([0, 1]),  # 0: A1, 1: A2
-                'choice': np.random.choice([0, 1]),  # Backward compatibility
-                'training_guide': [True, 0, trial_length-1]
-            }
-                
-            trials.append(trial_data)
-            conditions.append(condition)
-            
-        return trials, {'training_guide': [c['training_guide'] for c in conditions]}
+        """No-op generator retained for compatibility; environment is event-driven now."""
+        trials = [[None] for _ in range(num_trials)]
+        conditions = {'training_guide': [[True, 0, 0] for _ in range(num_trials)]}
+        return trials, conditions

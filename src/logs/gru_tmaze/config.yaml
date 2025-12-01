@@ -1,0 +1,27 @@
+env_config:
+  irrelevant_features: 0
+  length: 2
+  name: tmaze
+  obs_mode: position
+  stochasticity: 0.1
+environment: tmaze
+model: gru
+model_config:
+  batch_size: 1
+  clip_grad: 0.25
+  hidden_size: 128
+  learning_rate: 0.001
+  num_layers: 1
+name: gru_tmaze
+sequence_length: 5
+training_config:
+  cuda: false
+  eval_every: 100
+  eval_period: 100
+  log_dir: ./logs
+  num_episodes: 500
+  num_rollouts: 50
+  save_dir: ./models
+  save_every: 100
+  save_period: 1000
+  seed: 1

@@ -1,0 +1,31 @@
+env_config:
+  name: mdp
+  reward_prob: 0.7
+  s1_duration: 1
+  s2_duration: 1
+  trans_prob: 0.2
+environment: mdp
+model: drqn
+model_config:
+  batch_size: 1
+  buffer_capacity: 8192
+  cell_type: gru
+  epsilon: 0.1
+  gamma: 0.98
+  hidden_size: 32
+  learning_rate: 0.001
+  num_layers: 2
+  target_update_freq: 10
+name: drqn_mdp
+sequence_length: 5
+training_config:
+  cuda: true
+  eval_every: 100
+  eval_period: 100
+  log_dir: ./logs
+  num_episodes: 500
+  num_rollouts: 50
+  save_dir: ./models
+  save_every: 100
+  save_period: 1000
+  seed: 1

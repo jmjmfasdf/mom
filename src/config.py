@@ -55,6 +55,7 @@ class TMazeConfig(EnvironmentConfig):
     length: int = 20
     stochasticity: float = 0.0
     irrelevant_features: int = 0
+    obs_mode: str = 'type'  # 'type' (4-d) or 'position' (L+3)
 
 
 @dataclass
@@ -145,6 +146,8 @@ class ConfigManager:
                 env_config.stochasticity = args.stochasticity
             if hasattr(args, 'irrelevant') and args.irrelevant is not None:
                 env_config.irrelevant_features = args.irrelevant
+            if hasattr(args, 'tmaze_obs_mode') and args.tmaze_obs_mode is not None:
+                env_config.obs_mode = args.tmaze_obs_mode
         elif args.environment == 'mdp':
             if hasattr(args, 'task') and args.task is not None:
                 env_config.task_name = args.task
@@ -196,6 +199,8 @@ def create_parser():
     parser.add_argument('--length', type=int, help='T-maze corridor length')
     parser.add_argument('--stochasticity', type=float, help='T-maze transition stochasticity')
     parser.add_argument('--irrelevant', type=int, help='Number of irrelevant features')
+    parser.add_argument('--tmaze-obs-mode', type=str, choices=['type', 'position'],
+                        help='T-maze observation mode: type (4-d) or position (L+3)')
     
     # Two-step task parameters
     parser.add_argument('--s1-duration', type=int, help='Stage 1 stimulus duration (default: 3)')

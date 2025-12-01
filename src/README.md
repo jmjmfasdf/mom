@@ -17,8 +17,8 @@ pip install -r requirements.txt
 ```
 
 ## Usage
-
-### Basic Usage
+ 
+### Training Mode
 
 #### GRU on Two-Step MDP Task
 ```bash
@@ -29,6 +29,26 @@ python main.py --model gru --environment mdp --num-episodes 5000 --batch-size 32
 ```bash
 python main.py --model drqn --environment tmaze --num-episodes 5000 --batch-size 32
 ```
+
+### Evaluation Mode
+
+#### Load Trained Model and Evaluate
+```bash
+# Evaluate GRU model on MDP task
+python main.py --model gru --environment mdp --preload 'experiment_name/model_name.pt' --eval-num-episodes 100
+
+# Evaluate DRQN model on T-maze task  
+python main.py --model drqn --environment tmaze --preload 'experiment_name/model_name.pt' --eval-num-episodes 50
+```
+
+#### Evaluation Output
+- **Trajectory Data**: Saved as `trajectories_{env_name}.npz`
+  - MDP: (s1, a1, s2, a2, r) tuples for each episode
+  - T-maze: (s, a, s, a, r) trajectory sequences
+- **Model Activations**: Saved as `activations_{env_name}.npz`
+  - Hidden states for each timestep of each episode
+  - Shape: (num_episodes, num_timesteps, hidden_size)
+- **Performance Metrics**: Avg Reward, Success Rate logged to console and file
 
 ### Key Training Parameters
 
@@ -62,6 +82,14 @@ python main.py --model drqn --environment tmaze --num-episodes 5000 --batch-size
 ## T-maze Environment (DRQN)
 
 The T-maze environment supports various customization options for studying partially observable navigation tasks.
+
+#### T-maze Reward Structure
+- **Success**: +4.0 (reaching correct goal)
+- **Failure**: -0.1 (reaching wrong goal or hitting wall)
+- **Intermediate**: 0.0 (in corridor or at junction)
+- **Terminal**: 0.0 (already completed episode)
+
+The task requires working memory: agents must remember the initial hint (goal_up/goal_down) and make the correct choice at the T-junction.
 
 ### T-maze Arguments and Their Roles
 
@@ -167,49 +195,12 @@ The Two-Step task consists of 5 fixed slots:
     - And so on...
   - Controls reward contingency strength
 
-### Two-Step Usage Examples
 
-#### Basic Two-Step with GRU
-```bash
-python main.py \
-  --model gru \
-  --environment mdp \
-  --s1-duration 1 \
-  --s2-duration 1 \
-  --num-episodes 5000 \
-  --batch-size 32
-```
-**Trial length: 5 timesteps (s1→a1→s2→a2→reward)**
+## Complete Workflow Examples
 
-#### High transition probability
-```bash
-python main.py \
-  --model gru \
-  --environment mdp \
-  --s1-duration 1 \
-  --s2-duration 1 \
-  --trans-prob 0.9 \
-  --num-episodes 5000 \
-  --batch-size 32 \
-  --name gru_high_transition
-```
-**Trial length: 5 timesteps (s1→a1→s2→a2→reward)**
+### 2 step MDP
 
-#### Asymmetric reward structure
-```bash
-python main.py \
-  --model gru \
-  --environment mdp \
-  --s1-duration 1 \
-  --s2-duration 1 \
-  --trans-prob 0.9 \
-  --num-episodes 6000 \
-  --batch-size 32 \
-  --name gru_asymmetric
-```
-**Trial length: 5 timesteps (s1→a1→s2→a2→reward)**
-
-#### Low predictability environment
+#### Step 1: Training
 ```bash
 python main.py \
   --model gru \
@@ -218,61 +209,63 @@ python main.py \
   --s2-duration 1 \
   --trans-prob 0.6 \
   --reward-prob 0.6 \
-  --num-episodes 8000 \
-  --batch-size 32 \
-  --name gru_low_predictability
+  --num-episodes 10000 \
+  --batch-size 64 \
+  --eval-every 500 \
+  --save-every 1000 \
+  --name gru_mdp
 ```
 **Trial length: 5 timesteps (s1→a1→s2→a2→reward)**
 
-#### High precision environment
+#### Step 2: Evaluation
 ```bash
 python main.py \
   --model gru \
   --environment mdp \
-  --s1-duration 1 \
-  --s2-duration 1 \
-  --trans-prob 0.95 \
-  --reward-prob 0.95 \
-  --hidden-size 256 \
-  --learning-rate 5e-4 \
+  --preload 'gru_mdp_experiment/gru_mdp_experiment_final.pt' \
+  --eval-num-episodes 200
+```
+
+### 2. T-maze
+
+#### Step 1: Training
+```bash
+python main.py \
+  --model drqn \
+  --environment tmaze \
+  --length 1 \
+  --stochasticity 0.1 \
+  --epsilon 0.1 \
   --num-episodes 10000 \
   --batch-size 64 \
-  --name gru_high_precision
+  --buffer-capacity 2048 \
+  --eval-every 500 \
+  --save-every 1000 \
+  --name drqn_tmaze \
+  --cuda
 ```
-**Trial length: 5 timesteps (s1→a1→s2→a2→reward)**
 
-## Cross-Model Training Examples
-
-### GRU on T-maze (Cross-Training)
-```bash
-# GRU learning T-maze navigation
+```
 python main.py \
   --model gru \
   --environment tmaze \
   --length 1 \
   --stochasticity 0.1 \
-  --hidden-size 64 \
-  --num-episodes 5000 \
-  --batch-size 32 \
-  --name gru_tmaze_nav
+  --num-episodes 10000 \
+  --batch-size 128 \
+  --eval-every 500 \
+  --save-every 1000 \
+  --name gru_tmaze 
 ```
 
-### DRQN on Two-Step MDP (Cross-Training)
+#### Step 2: Evaluation
 ```bash
-# DRQN learning temporal credit assignment
 python main.py \
   --model drqn \
-  --environment mdp \
-  --s1-duration 1 \
-  --s2-duration 1 \
-  --trans-prob 0.7 \
-  --hidden-size 64 \
-  --epsilon 0.15 \
-  --num-episodes 8000 \
-  --batch-size 32 \
-  --name drqn_twostep
+  --environment tmaze \
+  --preload 'drqn_tmaze_experiment/drqn_tmaze_experiment_final.pt' \
+  --eval-num-episodes 100
 ```
-**Trial length: 5 timesteps (s1→a1→s2→a2→reward)**
 
 ## Complete Arguments Reference
 
@@ -306,10 +299,21 @@ python main.py \
 - `--reward-prob`: Reward probability, range 0.0-1.0 (default: 0.8)
 
 ### Training & Evaluation
-- `--eval-period`: Evaluation period (default: 100)
+- `--eval-every`: Evaluation frequency during training (default: 50)
 - `--num-rollouts`: Number of evaluation rollouts (default: 50)
 - `--seed`: Random seed (default: 42)
 - `--cuda`: Use CUDA if available
+
+### Model Saving
+- `--save-every`: Model saving frequency (default: 0)
+  - 0 = save only at the end
+  - >0 = save every N episodes (e.g., --save-every 100)
+
+### Evaluation Mode
+- `--preload`: Path to model checkpoint for evaluation mode
+  - Example: `--preload 'experiment_name/model_name.pt'`
+  - Automatically prepends `logs/` if not present
+- `--eval-num-episodes`: Number of episodes for evaluation mode (default: 100)
 
 ### Logging & Saving
 - `--log-dir`: Log directory (default: ./logs)
@@ -356,6 +360,11 @@ All model-environment combinations are fully supported:
 - **Environment-Specific Tuning**: All parameters from original papers accessible
 - **Comprehensive Logging**: Training progress and evaluation metrics
 - **Model Persistence**: Save and load trained models
+- **Evaluation Mode**: Load trained models and run evaluation-only experiments
+- **Trajectory Saving**: Save complete (s,a,r) sequences for analysis
+- **Activation Saving**: Save model hidden states for each timestep
+- **Flexible Model Saving**: Save models at regular intervals or only at the end
+- **Unified Output Format**: Consistent logging across all model-environment combinations
 
 ## Expected Behavior
 

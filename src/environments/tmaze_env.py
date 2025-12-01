@@ -33,22 +33,44 @@ class TMazeEnvironment(BaseEnvironment):
     ```
     """
 
-    def __init__(self, length=10, stochasticity=0.0, irrelevant_features=0, bayes=False):
+    def __init__(self, length=10, stochasticity=0.0, irrelevant_features=0, bayes=False, obs_mode: str = 'type'):
+        """
+        Args:
+            length: corridor length L
+            stochasticity: transition noise
+            irrelevant_features: number of extra random features appended to observation
+            bayes: enable belief updates from original project
+            obs_mode: 'type' (default) returns 4-d one-hot (UP/DOWN/CORRIDOR/CROSSROAD),
+                      'position' returns a position-specific one-hot of size (L+3):
+                        index 0..L-1 = start to right before junction,
+                        index L = junction,
+                        index L+1 = upper terminal,
+                        index L+2 = lower terminal
+        """
         self.gamma = 0.98
-        self.observation_size = 4 + irrelevant_features
-        self.action_size = 4
-        self.belief_type = "exact"
-        
-        super().__init__(self.observation_size, self.action_size)
-        
         self.length = int(length)
         self.stochasticity = float(stochasticity)
-        self.irrelevant_features = irrelevant_features
+        self.irrelevant_features = int(irrelevant_features)
         self.bayes = bayes
+        self.obs_mode = obs_mode  # 'type' or 'position'
+        self.belief_type = "exact"
+
+        # Action space always 4
+        self.action_size = 4
+
+        # Observation size depends on mode
+        if self.obs_mode == 'position':
+            base_obs = self.length + 3
+        else:
+            base_obs = 4
+        self.observation_size = base_obs + self.irrelevant_features
+
+        super().__init__(self.observation_size, self.action_size)
         
         # Initialize transition and observation models (from original)
+        # Note: observation model is used only when bayes=True and assumes 'type' mode
         self.T = self._transition_model()
-        self.O = self._observation_model()
+        self.O = self._observation_model() if self.obs_mode == 'type' else None
         
         # States
         self.position = None
@@ -73,7 +95,7 @@ class TMazeEnvironment(BaseEnvironment):
         observation = self._get_observation()
         
         # Initialize belief if using Bayes
-        if self.bayes:
+        if self.bayes and self.obs_mode == 'type':
             self._init_belief(observation)
         else:
             self.belief = None
@@ -98,7 +120,7 @@ class TMazeEnvironment(BaseEnvironment):
         done = self._terminal()
         
         # Update belief if using Bayes
-        if self.bayes:
+        if self.bayes and self.obs_mode == 'type':
             self._update_belief(action, observation)
         
         # Check if max steps reached
@@ -109,37 +131,44 @@ class TMazeEnvironment(BaseEnvironment):
         info = {
             'position': self.position,
             'goal_up': self.goal_up,
-            'belief': self.belief.copy() if self.belief is not None else None
+            'belief': self.belief.clone() if self.belief is not None else None
         }
         
         return observation, reward, self.done, info
     
     def _get_observation(self):
         """Get current observation (from original logic)"""
-        if self.position == 0:
-            # Show goal hint at the beginning
-            if self.goal_up:
-                obs = O_UP
+        if self.obs_mode == 'position':
+            # Position-specific one-hot of size (L+3)
+            size = self.length + 3
+            vec = np.zeros(size, dtype=float)
+            if 0 <= self.position <= self.length + 2:
+                idx = self.position  # 0..L corridor/junction, then L+1/L+2 terminals
+                vec[idx] = 1.0
             else:
-                obs = O_DOWN
-        elif 0 < self.position < self.length:
-            # In corridor
-            obs = O_CORRIDOR
-        elif self.length <= self.position <= self.length + 2:
-            # At T-junction or terminal
-            obs = O_CROSSROAD
+                raise ValueError("Unexpected state")
+
+            if self.irrelevant_features > 0:
+                irrelevant = np.random.random(self.irrelevant_features)
+                vec = np.concatenate([vec, irrelevant])
+            return vec
         else:
-            raise ValueError("Unexpected state")
-            
-        # Convert to numpy for compatibility
-        obs_np = obs.numpy()
-            
-        # Add irrelevant features if specified
-        if self.irrelevant_features > 0:
-            irrelevant = np.random.random(self.irrelevant_features)
-            obs_np = np.concatenate([obs_np, irrelevant])
-            
-        return obs_np
+            # Original 4-d observation type encoding
+            if self.position == 0:
+                # Show goal hint at the beginning
+                obs = O_UP if self.goal_up else O_DOWN
+            elif 0 < self.position < self.length:
+                obs = O_CORRIDOR
+            elif self.length <= self.position <= self.length + 2:
+                obs = O_CROSSROAD
+            else:
+                raise ValueError("Unexpected state")
+
+            obs_np = obs.numpy()
+            if self.irrelevant_features > 0:
+                irrelevant = np.random.random(self.irrelevant_features)
+                obs_np = np.concatenate([obs_np, irrelevant])
+            return obs_np
     
     def get_observation_space(self):
         """Get observation space size"""

@@ -7,8 +7,10 @@ import copy
 import time
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
 from torch.autograd import Variable
+from torch.distributions import Categorical
 
 from .base_agent import BaseAgent
 
@@ -202,8 +204,16 @@ class GRUAgent(BaseAgent):
         # Create calculator for loss computation
         self.calculator = Calculator(batch_size=batch_size, cuda_enabled=cuda_enabled)
         
+        # Policy head for RL on MDP (maps hidden -> action logits)
+        self.policy_head = nn.Linear(hidden_size, action_size)
+        # Optimizer for RL path (update GRU + policy)
+        self.rl_optimizer = torch.optim.Adam(list(self.model.parameters()) + list(self.policy_head.parameters()), lr=learning_rate)
+        
         # Hidden state for each batch
         self.hidden_state = None
+        
+        if self.cuda:
+            self.policy_head = self.policy_head.cuda()
         
     def reset_hidden(self, batch_size=None):
         """Reset hidden state"""
@@ -211,11 +221,9 @@ class GRUAgent(BaseAgent):
             batch_size = self.batch_size
         self.hidden_state = self.model.init_hidden(batch_size)
         
-    def get_action(self, observation, hidden_state=None, epsilon=0.0):
+    def get_action(self, observation, hidden_state=None, epsilon=0.0, env_name='mdp'):
         """Get action from observation"""
-        # For GRU model, we need to process the observation through the model
-        # to get a meaningful action prediction
-        
+        # Process observation through GRU to get updated hidden state
         if hidden_state is None:
             hidden_state = self.model.init_hidden(1)
         
@@ -223,25 +231,53 @@ class GRUAgent(BaseAgent):
         if not isinstance(observation, torch.Tensor):
             observation = torch.FloatTensor(observation).unsqueeze(0).unsqueeze(0)  # (1, 1, obs_size)
         
-        # Forward pass through model
+        # Forward pass through model (single pass used for all branches)
         with torch.no_grad():
             output, new_hidden_state = self.model(observation, hidden_state, bsz=1)
-            
-        # Convert output to action (binary choice for MDP)
-        # Take the last output and convert to action
-        action_probs = output[-1, 0, :]  # (action_size,)
         
-        # For MDP environment, we need binary actions (0 or 1)
-        # Use sigmoid to get probability, then threshold
-        if action_probs.size(0) >= 2:
-            # If we have multiple outputs, use the first one as probability
-            prob = torch.sigmoid(action_probs[0]).item()
-            action = 1 if prob > 0.5 else 0
+        if env_name == 'mdp':
+            # Use policy head (RL) for MDP
+            with torch.no_grad():
+                features = new_hidden_state[-1, 0, :]
+                logits = self.policy_head(features)
+                if epsilon and np.random.rand() < epsilon:
+                    action = np.random.randint(self.action_size)
+                else:
+                    action = torch.argmax(logits).item()
+        elif env_name == 'tmaze':
+            # For T-maze environment, we need 4 actions (0, 1, 2, 3)
+            # Use softmax to get action probabilities from decoder output
+            action_logits = output[-1, 0, :]
+            if action_logits.size(0) >= 4:
+                probs = torch.softmax(action_logits[:4], dim=0)
+                action = torch.multinomial(probs, 1).item()
+            else:
+                action = torch.argmax(action_logits).item() % 4
         else:
-            # Fallback to argmax but ensure binary
-            action = min(torch.argmax(action_probs).item(), 1)
+            # Default: use argmax
+            action = torch.argmax(output[-1, 0, :]).item()
         
         return action, new_hidden_state
+    
+    def policy_action(self, observation, hidden_state=None, deterministic=False):
+        """Sample action and log_prob for RL on MDP using policy head."""
+        if hidden_state is None:
+            hidden_state = self.model.init_hidden(1)
+        if not isinstance(observation, torch.Tensor):
+            observation = torch.FloatTensor(observation).unsqueeze(0).unsqueeze(0)
+        # Forward with grad for RL
+        output, new_hidden_state = self.model(observation, hidden_state, bsz=1)
+        features = new_hidden_state[-1, 0, :]
+        logits = self.policy_head(features)
+        if deterministic:
+            action = torch.argmax(logits).item()
+            log_prob = torch.log_softmax(logits, dim=-1)[action]
+        else:
+            dist = Categorical(logits=logits)
+            a = dist.sample()
+            action = a.item()
+            log_prob = dist.log_prob(a)
+        return action, log_prob, new_hidden_state
         
     def eval_mode(self):
         """Set model to evaluation mode"""
@@ -276,11 +312,72 @@ class GRUAgent(BaseAgent):
             self.model.optimizer.step()
             
         return total_loss.item() if isinstance(total_loss, torch.Tensor) else total_loss
+
+    def reinforce_update(self, log_probs, total_reward):
+        """Policy gradient update for MDP using episode return."""
+        if not log_probs:
+            return 0.0
+        loss = -torch.stack(log_probs).sum() * float(total_reward)
+        self.rl_optimizer.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(list(self.model.parameters()) + list(self.policy_head.parameters()), 0.5)
+        self.rl_optimizer.step()
+        return loss.item()
+    
+    def train_trajectory(self, observations, actions, rewards):
+        """Train GRU on trajectory data using sequence prediction"""
+        # Convert inputs to proper format
+        if len(observations.shape) == 2:
+            observations = observations.unsqueeze(1)  # (seq_len, 1, obs_size)
+        
+        # For sequence prediction, GRU learns to predict next observation
+        seq_len, batch_size, obs_size = observations.shape
+        
+        # Initialize hidden state for this trajectory
+        hidden_state = self.model.init_hidden(batch_size)
+        
+        # Forward pass through GRU
+        self.model.train()
+        self.model.optimizer.zero_grad()
+        
+        # Process sequence
+        total_loss = 0
+        for t in range(seq_len - 1):
+            # Current observation
+            current_obs = observations[t:t+1]  # (1, batch_size, obs_size)
+            
+            # Forward pass
+            output, hidden_state = self.model(current_obs, hidden_state, batch_size)
+            
+            # Target is next observation
+            target_obs = observations[t+1:t+2]  # (1, batch_size, obs_size)
+            
+            # Compute loss (MSE between predicted and actual next observation)
+            loss = torch.nn.functional.mse_loss(output, target_obs)
+            total_loss += loss
+        
+        # Backward pass
+        if total_loss > 0:
+            total_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.25)
+            self.model.optimizer.step()
+        
+        return total_loss.item() if isinstance(total_loss, torch.Tensor) else total_loss
     
     def save_model(self, filepath):
         """Save model"""
-        torch.save(self.model.state_dict(), filepath)
+        torch.save({
+            'model_state_dict': self.model.state_dict(),
+            'policy_state_dict': self.policy_head.state_dict(),
+        }, filepath)
         
     def load_model(self, filepath):
         """Load model"""
-        self.model.load_state_dict(torch.load(filepath))
+        state = torch.load(filepath)
+        if isinstance(state, dict) and 'model_state_dict' in state:
+            self.model.load_state_dict(state['model_state_dict'])
+            if 'policy_state_dict' in state:
+                self.policy_head.load_state_dict(state['policy_state_dict'])
+        else:
+            # Backward compatibility with older checkpoints
+            self.model.load_state_dict(state)
