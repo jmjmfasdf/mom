@@ -203,10 +203,10 @@ def create_parser():
                         help='T-maze observation mode: type (4-d) or position (L+3)')
     
     # Two-step task parameters
-    parser.add_argument('--s1-duration', type=int, help='Stage 1 stimulus duration (default: 3)')
-    parser.add_argument('--s2-duration', type=int, help='Stage 2 stimulus duration (default: 3)')
-    parser.add_argument('--trans-prob', type=float, help='Transition probability for two-step task (default: 0.8)')
-    parser.add_argument('--reward-prob', type=float, help='Reward probability for two-step task (default: 0.8)')
+    parser.add_argument('--s1-duration', type=int, help='Stage 1 stimulus duration (compat, unused)')
+    parser.add_argument('--s2-duration', type=int, help='Stage 2 stimulus duration (compat, unused)')
+    parser.add_argument('--trans-prob', type=float, help='Rare transition probability for two-step task (default: 0.3)')
+    parser.add_argument('--reward-prob', type=float, help='Initial reward probability for S2 options (default: 0.5)')
     
     # Training parameters
     parser.add_argument('--num-episodes', type=int, help='Number of training episodes')

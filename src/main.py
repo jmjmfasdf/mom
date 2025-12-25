@@ -399,9 +399,8 @@ def train_drqn_mdp(agent, environment, training_config, logger, log_dir):
     training_episodes = []
 
     for episode in range(training_config.num_episodes):
-        # Configure block schedule (alternate every 50 episodes)
-        block = (episode // 50) % 2
-        observation = environment.configure_trial([None], {'block': block})
+        # Reset environment for a new trial
+        observation = environment.reset()
 
         # Reset agent hidden state
         hidden_state = agent.reset_hidden(1)
@@ -452,7 +451,6 @@ def train_drqn_mdp(agent, environment, training_config, logger, log_dir):
             'dones': episode_dones,
             'activations': episode_activations,
             'total_reward': float(total_reward),
-            'block': block,
         })
 
         # Train DRQN using trajectory
@@ -512,9 +510,8 @@ def train_gru_mdp(agent, environment, training_config, logger, log_dir):
     training_episodes = []
 
     for episode in range(training_config.num_episodes):
-        # Configure environment for this episode's block
-        block = (episode // 50) % 2
-        observation = environment.configure_trial([None], {'block': block})
+        # Reset environment for a new trial
+        observation = environment.reset()
 
         # Reset agent hidden state
         hidden_state = agent.model.init_hidden(1)
@@ -552,7 +549,6 @@ def train_gru_mdp(agent, environment, training_config, logger, log_dir):
             'rewards': rewards,
             'activations': activations,
             'total_reward': float(total_reward),
-            'block': block,
         })
 
         # Evaluate periodically
@@ -626,9 +622,8 @@ def evaluate_agent(agent, environment, env_name, num_rollouts, logger):
             total_rewards.append(total_reward)
             
         elif env_name == 'mdp':
-            # Event-driven two-step: set a fixed block and act until done
-            environment.configure_trial([None], {'block': 0})
-            observation = environment.current_observation
+            # Event-driven two-step: act until done
+            observation = environment.reset()
             hidden_state = agent.reset_hidden(1)
             total_reward = 0.0
 
@@ -711,14 +706,9 @@ def run_evaluation_mode(agent, environment, env_name, num_episodes, logger, log_
                 
         elif env_name == 'mdp':
             # Event-driven two-step
-            block = episode // 50 % 2
-            observation = environment.configure_trial([None], {'block': block})
+            observation = environment.reset()
             hidden_state = agent.reset_hidden(1)
             total_reward = 0
-
-            # Debug info for first few episodes
-            if episode < 3:
-                logger.info(f"Episode {episode}: block={block}")
 
             done = False
             while not done:

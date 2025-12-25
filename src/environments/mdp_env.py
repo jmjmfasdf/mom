@@ -1,15 +1,15 @@
 """
-MDP Two-Step Task Environment (event-driven)
+MDP Two-Step Task Environment (event-driven, Daw 2011 style)
+
 Stage 1: show s1 until agent picks a1
 Stage 2: show s2 (B1/B2) until agent picks a2
 Then deliver reward and terminate.
 
-Transition parameter `trans_prob` is the probability of an undesired transition:
-- If a1 selects the path toward B1, go to B2 with probability trans_prob (undesired),
-  otherwise to B1 with probability 1 - trans_prob (desired). Symmetric for selecting B2.
+Transition parameter `trans_prob` is the probability of a rare (undesired) transition:
+- If a1 selects the path toward B1, go to B2 with probability trans_prob (rare),
+  otherwise to B1 with probability 1 - trans_prob (common). Symmetric for selecting B2.
 """
 
-import copy
 import numpy as np
 from .base_env import BaseEnvironment
 
@@ -24,17 +24,32 @@ class TwoStepTask:
       - phase = 2: terminal; reward exposed via step() return
     """
 
-    def __init__(self, s1_duration=1, s2_duration=1, trans_prob=0.2, reward_prob=0.8, **kwargs):
+    def __init__(
+        self,
+        s1_duration=1,
+        s2_duration=1,
+        trans_prob=0.3,
+        reward_prob=0.5,
+        reward_sd=0.025,
+        reward_min=0.25,
+        reward_max=0.75,
+        **kwargs,
+    ):
         # durations kept for compatibility but unused
         self.n_input = 3
 
         # Task parameters
-        self.trans_prob = trans_prob  # probability of undesired transition
-        self.reward_prob = reward_prob  # probability of reward in high-reward stage
-        self.block_size = 50
+        self.trans_prob = float(trans_prob)  # probability of rare transition
+        self.reward_sd = float(reward_sd)
+        self.reward_min = float(reward_min)
+        self.reward_max = float(reward_max)
+
+        # Reward probabilities for 4 stage-2 options (state x action)
+        init_p = float(reward_prob)
+        init_p = min(max(init_p, self.reward_min), self.reward_max)
+        self.reward_probs = np.full((2, 2), init_p, dtype=float)
 
         # Trial state
-        self.block = 0
         self.phase = 0
         self.stage2 = None  # 1: B1, 2: B2
         self.choice1 = None
@@ -56,8 +71,7 @@ class TwoStepTask:
         return np.array([1.0, 0.0, 0.0], dtype=float)  # s1
 
     def configure(self, trial_data, trial_settings):
-        # Configure block; ignore any durations or precomputed sequences
-        self.block = trial_settings.get('block', 0)
+        # Ignore any durations or precomputed sequences; this task is event-driven.
         return self.reset()
 
     def _observe(self):
@@ -84,12 +98,19 @@ class TwoStepTask:
             return 1 if undesired else 2
 
     def _sample_reward(self):
-        # block 0: B1 high reward, block 1: B2 high reward
-        if self.stage2 == 1:  # B1
-            p = self.reward_prob if self.block == 0 else (1 - self.reward_prob)
-        else:  # B2
-            p = (1 - self.reward_prob) if self.block == 0 else self.reward_prob
+        if self.stage2 is None or self.choice2 is None:
+            return 0
+        stage_index = self.stage2 - 1  # 0: B1, 1: B2
+        p = float(self.reward_probs[stage_index, self.choice2])
         return 1 if np.random.rand() < p else 0
+
+    def _drift_reward_probs(self):
+        noise = np.random.normal(0.0, self.reward_sd, size=self.reward_probs.shape)
+        self.reward_probs = np.clip(
+            self.reward_probs + noise,
+            self.reward_min,
+            self.reward_max,
+        )
 
     def step(self, action):
         if self.phase == 0:
@@ -111,6 +132,7 @@ class TwoStepTask:
                 self.reward = self._sample_reward()
                 self.phase = 2
                 self.completed = True
+                self._drift_reward_probs()
                 return self._observe(), float(self.reward), True, {'phase': self.phase}
             else:
                 return self._observe(), 0.0, False, {'phase': self.phase}
@@ -137,14 +159,13 @@ class TwoStepTask:
             "stage2": self.stage2,
             "reward": self.reward,
             "common": self.common,
-            "block": self.block,
             "completed": self.completed,
         }
 
 
 class MDPEnvironment(BaseEnvironment):
     """
-    MDP Task Environment - 5-Slot Structure
+    MDP Two-Step Task Environment (event-driven)
     """
     
     def __init__(self, **kwargs):
@@ -195,15 +216,8 @@ class MDPEnvironment(BaseEnvironment):
         return self.action_size
     
     def is_winning(self):
-        """Success if agent reached the high-reward stage, regardless of sampled reward.
-
-        Block 0: target stage is B1 (stage2 == 1)
-        Block 1: target stage is B2 (stage2 == 2)
-        """
-        if self.task.stage2 is None:
-            return 0
-        target_stage = 1 if self.task.block == 0 else 2
-        return 1 if self.task.stage2 == target_stage else 0
+        """Success if the trial delivered a reward."""
+        return 1 if self.task.reward else 0
     
     def is_completed(self):
         """Check if current trial is completed"""
@@ -215,7 +229,8 @@ class MDPEnvironment(BaseEnvironment):
         if hasattr(self.task, 'choice1') and self.task.choice1 is not None:
             print(f"Choice1: {self.task.choice1}, Choice2: {self.task.choice2}")
             print(f"Stage2: {self.task.stage2}, Reward: {self.task.reward}")
-            print(f"Common transition: {self.task.common}, Block: {self.task.block}")
+            print(f"Common transition: {self.task.common}")
+            print(f"Reward probs: {self.task.reward_probs}")
 
 
 # Task generator for two-step task
