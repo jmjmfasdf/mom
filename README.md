@@ -102,24 +102,3 @@ Evaluation-only runs use `--preload` and `--eval-num-episodes` and write logs un
     └── requirements.txt
 ```
 
-## Original Papers
-
-**T-maze Environment:**
-```bibtex
-@article{lambrechts2022recurrent,
-    title={Recurrent Networks, Hidden States and Beliefs in Partially Observable Environments},
-    author={Gaspard Lambrechts and Adrien Bolland and Damien Ernst},
-    journal={Transactions on Machine Learning Research},
-    year={2022}
-}
-```
-
-**Two-Step MDP Environment:**
-```bibtex
-@article{daw2011modelbased,
-    title={Model-based influences on humans' choices and striatal prediction errors},
-    author={Nathaniel D. Daw and Samuel J. Gershman and Ben Seymour and Peter Dayan and Raymond J. Dolan},
-    journal={Neuron},
-    year={2011}
-}
-```
