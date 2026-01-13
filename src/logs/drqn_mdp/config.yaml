@@ -1,6 +1,5 @@
 env_config:
   name: mdp
-  reward_prob: 0.7
   s1_duration: 1
   s2_duration: 1
   trans_prob: 0.2
@@ -23,7 +22,7 @@ training_config:
   eval_every: 100
   eval_period: 100
   log_dir: ./logs
-  num_episodes: 500
+  num_episodes: 100
   num_rollouts: 50
   save_dir: ./models
   save_every: 100

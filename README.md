@@ -72,6 +72,48 @@ Use the parameter groups below to switch model/environment and tune the run.
 - Each option’s reward probability drifts every trial via an independent Gaussian random walk,
   clipped to [0.25, 0.75] with SD 0.025 (hardcoded defaults).
 
+## Environment diagrams and variables
+
+### T-maze (tmaze)
+
+```
+            [L+1] Up terminal (reward if goal_up)
+                |
+[0] start - [1] - ... - [L-1] - [L] junction
+                |
+            [L+2] Down terminal (reward if not goal_up)
+```
+
+Variable mapping (creation in `src/main.py` and `src/environments/tmaze_env.py`):
+- `--length` -> `TMazeEnvironment.length` (corridor length L, controls state indexing and obs size)
+- `--stochasticity` -> `TMazeEnvironment.stochasticity` (chance to randomize actions)
+- `--irrelevant` -> `TMazeEnvironment.irrelevant_features` (extra random features appended)
+- `--tmaze-obs-mode` -> `TMazeEnvironment.obs_mode` (`type` or `position`)
+- `bayes` (not exposed via CLI) -> `TMazeEnvironment.bayes` (enables belief updates)
+
+Observation modes:
+- `type`: 4-d one-hot `[UP, DOWN, CORRIDOR, CROSSROAD]`; at start (pos 0) shows UP/DOWN hint.
+- `position`: one-hot of size `L+3` with indices 0..L (corridor + junction), L+1 (up), L+2 (down).
+
+### Two-Step MDP (mdp)
+
+```
+S1 (obs [1,0,0]) --a1 in {0,1}-->
+  common (1 - trans_prob) -> B1 (obs [0,1,0])
+  rare   (trans_prob)     -> B2 (obs [0,0,1])
+Then a2 in {0,1} -> reward (Bernoulli p = reward_probs[state, action]) -> terminal
+```
+
+Variable mapping (creation in `src/main.py` and `src/environments/mdp_env.py`):
+- `--trans-prob` -> `TwoStepTask.trans_prob` (rare transition probability)
+- `--reward-prob` -> initial `TwoStepTask.reward_probs` values for all 4 options
+- `--s1-duration`, `--s2-duration` -> accepted but unused in event-driven task
+- Internal defaults: `reward_sd=0.025`, `reward_min=0.25`, `reward_max=0.75`
+
+Reward drift:
+- After each trial, `reward_probs` add Gaussian noise (SD `reward_sd`) and clip to
+  [`reward_min`, `reward_max`].
+
 ### Training and evaluation
 - `--num-episodes`: Number of training episodes
 - `--eval-period`: Evaluation period
@@ -101,4 +143,3 @@ Evaluation-only runs use `--preload` and `--eval-num-episodes` and write logs un
     ├── environments/
     └── requirements.txt
 ```
-
