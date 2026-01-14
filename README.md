@@ -9,6 +9,32 @@ This framework allows you to:
 - Run on T-maze or Two-Step MDP environments
 - Configure model, environment, and training parameters via a single CLI
 
+## Model description
+
+### GRU (GRUAgent)
+- 입력: 관측 벡터(1-step 시퀀스)와 hidden state. 관측은 `(1, 1, obs_size)` 형태로 GRU에 들어갑니다.
+- 내부 구조: GRU → ReLU → Linear(decoder) → Sigmoid. decoder는 입력 크기와 동일한 차원을 출력합니다.
+- 행동 선택:
+  - MDP에서는 hidden state의 마지막 층을 policy head(`hidden_size -> action_size`)로 통과시켜 logits를 만들고, 이를 기반으로 행동을 선택합니다.
+  - T-maze에서는 decoder 출력의 앞 4차원을 softmax로 변환해 행동을 샘플링합니다.
+- 학습:
+  - MDP에서는 REINFORCE 방식으로 episode return을 사용해 policy head와 GRU를 함께 업데이트합니다.
+  - T-maze에서는 다음 관측 예측(MSE)을 기반으로 GRU를 업데이트합니다.
+- 출력: 선택된 action과 업데이트된 hidden state. 학습 단계에서는 loss 스칼라를 추가로 반환합니다.
+
+### DRQN (DRQNAgent)
+- 입력: 현재 관측 벡터와 이전 행동 one-hot을 이어 붙인 벡터(`action_size + obs_size`).
+- 내부 구조: RNN 셀(GRU/LSTM)로 시퀀스를 처리한 뒤 Linear로 Q-value를 출력합니다.
+- 행동 선택: epsilon-greedy. 랜덤 선택 시 hidden state는 유지하고, greedy 선택 시 Q-network 출력의 argmax를 사용합니다.
+- 학습:
+  - trajectory replay buffer에서 시퀀스를 샘플링합니다.
+  - target network를 사용한 TD 타깃으로 MSE 손실을 계산하고, 주기적으로 target network를 동기화합니다.
+- 출력: 선택된 action과 업데이트된 hidden state. 학습 단계에서는 loss 스칼라를 추가로 반환합니다.
+
+### 환경별 입력/출력 크기 요약
+- MDP: 관측 3차원(one-hot), 행동 2개 (`action_size=2`)
+- T-maze: 관측 4차원(또는 위치 one-hot), 행동 4개 (`action_size=4`)
+
 ## Installation
 
 ```bash
