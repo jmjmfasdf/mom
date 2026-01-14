@@ -7,21 +7,17 @@ env_config:
   s2_duration: 1
   trans_prob: 0.3
 environment: mdp
-model: drqn
+model: gru
 model_config:
   batch_size: 1
-  buffer_capacity: 8192
-  cell_type: gru
-  epsilon: 0.1
-  gamma: 0.98
-  hidden_size: 32
+  clip_grad: 0.25
+  hidden_size: 128
   learning_rate: 0.001
-  num_layers: 2
-  target_update_freq: 10
-name: drqn_mdp
+  num_layers: 1
+name: gru_mdp
 sequence_length: 5
 training_config:
-  cuda: true
+  cuda: false
   eval_every: 201
   eval_period: 100
   log_dir: ./logs

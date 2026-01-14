@@ -1,0 +1,32 @@
+2026-01-14 09:38:44,931 - INFO - Starting experiment: gru_mdp
+2026-01-14 09:38:44,931 - INFO - Model: gru, Environment: mdp
+2026-01-14 09:38:44,931 - INFO - Model config: GRUConfig(hidden_size=128, num_layers=1, learning_rate=0.001, batch_size=1, clip_grad=0.25)
+2026-01-14 09:38:44,931 - INFO - Environment config: MDPConfig(name='mdp', s1_duration=1, s2_duration=1)
+2026-01-14 09:38:44,931 - INFO - Training config: TrainingConfig(num_episodes=201, eval_period=100, eval_every=201, num_rollouts=50, save_period=1000, save_every=201, log_dir='./logs', save_dir='./models', seed=1, cuda=False, mdp_block_size=67, mdp_num_blocks=3)
+2026-01-14 09:38:44,931 - INFO - Using CPU
+2026-01-14 09:38:44,931 - INFO - Created environment: MDPEnvironment
+2026-01-14 09:38:45,719 - INFO - Created agent: GRUAgent
+2026-01-14 09:38:45,721 - INFO - Starting GRU RL training on Two-Step task
+2026-01-14 09:38:45,897 - INFO - Completed MDP block 1/3
+2026-01-14 09:38:46,091 - INFO - Completed MDP block 2/3
+2026-01-14 09:38:46,260 - INFO - Evaluating agent for 50 rollouts
+2026-01-14 09:38:46,283 - INFO - Evaluation Results - Avg Reward: 0.620, Success Rate: 0.620
+2026-01-14 09:38:46,283 - INFO - Episode 201/201, Eval Avg Reward: 0.620, Eval Success Rate: 0.620, Train Loss: 1.3855
+2026-01-14 09:38:46,285 - INFO - Model saved to logs/gru_mdp/model_episode_201.pt
+2026-01-14 09:38:46,285 - INFO - Completed MDP block 3/3
+2026-01-14 09:38:46,288 - INFO - Training trajectories and activations saved to logs/gru_mdp/train_episodes_mdp_1768351126.npz
+2026-01-14 09:38:46,288 - INFO - Training completed in 0.57 seconds
+2026-01-14 09:38:46,288 - INFO - Evaluating agent for 50 rollouts
+2026-01-14 09:38:46,312 - INFO - Evaluation Results - Avg Reward: 0.600, Success Rate: 0.600
+2026-01-14 09:38:46,313 - INFO - Final model saved to logs/gru_mdp/gru_mdp_final.pt
+2026-01-14 09:38:46,314 - INFO - Evaluation checkpoint saved to logs/gru_mdp/model.pt
+2026-01-14 09:38:46,314 - INFO - ==================================================
+2026-01-14 09:38:46,314 - INFO - EXPERIMENT SUMMARY
+2026-01-14 09:38:46,314 - INFO - ==================================================
+2026-01-14 09:38:46,314 - INFO - Model: gru
+2026-01-14 09:38:46,314 - INFO - Environment: mdp
+2026-01-14 09:38:46,314 - INFO - Training Episodes: 201
+2026-01-14 09:38:46,314 - INFO - Final Avg Reward: 0.600
+2026-01-14 09:38:46,314 - INFO - Success Rate: 0.600
+2026-01-14 09:38:46,314 - INFO - Training Time: 0.57s
+2026-01-14 09:38:46,314 - INFO - ==================================================
