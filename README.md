@@ -172,14 +172,14 @@ Observation modes:
 ```
                                       S1 (obs [1,0,0])
                                           a1 in {0,1}
-              (per-trial action map: left/right permuted)
+                          (per-trial action map: left/right permuted)
                                 /                                 \
-      common (1 - trans_prob)           rare (trans_prob)
-                       v                                           v
-            B1 (obs [0,1,0])                     B2 (obs [0,0,1])
-                a2 in {0,1}                            a2 in {0,1}
-        r ~ Bernoulli(p[B1,a2])          r ~ Bernoulli(p[B2,a2])
-                        \                                          /
+      common (1 - trans_prob)                                 rare (trans_prob)
+                       v                                             v
+            B1 (obs [0,1,0])                                             B2 (obs [0,0,1])
+                a2 in {0,1}                                                      a2 in {0,1}
+        r ~ Bernoulli(p[B1,a2])                                   r ~ Bernoulli(p[B2,a2])
+                        \                                     /
                            \------- terminal ------/
 ```
 
