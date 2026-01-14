@@ -20,14 +20,38 @@ pip install -r src/requirements.txt
 From the repo root:
 
 ```bash
+python main.py \
+  --model gru \
+  --environment tmaze \
+  --length 2 \
+  --stochasticity 0.1 \
+  --num-episodes 500 \
+  --batch-size 1 \
+  --eval-every 100 \
+  --save-every 100 \
+  --tmaze-obs-mode position \
+  --seed 1 \
+  --name gru_tmaze 
+```
+
+```bash
 python src/main.py \
   --model drqn \
-  --environment tmaze \
-  --num-episodes 5000 \
-  --batch-size 32 \
-  --length 20 \
   --epsilon 0.1 \
-  --name drqn_tmaze
+  --environment mdp \
+  --trans-prob 0.3 \
+  --reward-prob 0.7 \
+  --mdp-reward-boundary reflect \
+  --mdp-permute-actions \
+  --mdp-block-size 67 \
+  --mdp-num-blocks 3 \
+  --num-episodes 201 \
+  --batch-size 1 \
+  --eval-every 201 \
+  --save-every 201 \
+  --seed 1 \
+  --name drqn_mdp \
+  --cuda
 ```
 
 Use the parameter groups below to switch model/environment and tune the run.
