@@ -79,6 +79,8 @@ class TrainingConfig:
     save_dir: str = "./models"
     seed: int = 42
     cuda: bool = False
+    mdp_block_size: int = 0
+    mdp_num_blocks: int = 0
 
 
 class ConfigManager:
@@ -167,6 +169,19 @@ class ConfigManager:
             self.training_config.seed = args.seed
         if hasattr(args, 'cuda') and args.cuda is not None:
             self.training_config.cuda = args.cuda
+        if hasattr(args, 'mdp_block_size') and args.mdp_block_size is not None:
+            self.training_config.mdp_block_size = args.mdp_block_size
+        if hasattr(args, 'mdp_num_blocks') and args.mdp_num_blocks is not None:
+            self.training_config.mdp_num_blocks = args.mdp_num_blocks
+        if args.environment == 'mdp':
+            if (
+                args.num_episodes is None
+                and self.training_config.mdp_block_size
+                and self.training_config.mdp_num_blocks
+            ):
+                self.training_config.num_episodes = (
+                    self.training_config.mdp_block_size * self.training_config.mdp_num_blocks
+                )
 
 
 def create_parser():
@@ -207,6 +222,14 @@ def create_parser():
     parser.add_argument('--s2-duration', type=int, help='Stage 2 stimulus duration (compat, unused)')
     parser.add_argument('--trans-prob', type=float, help='Rare transition probability for two-step task (default: 0.3)')
     parser.add_argument('--reward-prob', type=float, help='Initial reward probability for S2 options (default: 0.5)')
+    parser.add_argument('--mdp-reward-boundary', type=str, choices=['reflect', 'clip'], default='reflect',
+                        help="Boundary handling for reward drift ('reflect' matches Daw 2011)")
+    parser.add_argument('--mdp-permute-actions', action=argparse.BooleanOptionalAction, default=True,
+                        help='Permute left/right action mapping each trial (default: True)')
+    parser.add_argument('--mdp-block-size', type=int,
+                        help='Block size in trials for MDP (e.g., 67 for Daw 2011)')
+    parser.add_argument('--mdp-num-blocks', type=int,
+                        help='Number of MDP blocks (e.g., 3 for Daw 2011)')
     
     # Training parameters
     parser.add_argument('--num-episodes', type=int, help='Number of training episodes')

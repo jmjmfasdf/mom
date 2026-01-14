@@ -81,7 +81,14 @@ def build_environment(env_name, env_cfg):
                                 obs_mode=obs_mode)
     elif env_name == 'mdp':
         kwargs = {}
-        for k in ('s1_duration', 's2_duration', 'trans_prob', 'reward_prob'):
+        for k in (
+            's1_duration',
+            's2_duration',
+            'trans_prob',
+            'reward_prob',
+            'reward_boundary',
+            'permute_actions',
+        ):
             if k in env_cfg:
                 kwargs[k] = env_cfg[k]
         return MDPEnvironment(**kwargs)

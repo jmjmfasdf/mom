@@ -149,6 +149,10 @@ def create_environment(env_name: str, env_config, args=None):
                 task_kwargs['trans_prob'] = args.trans_prob
             if hasattr(args, 'reward_prob') and args.reward_prob is not None:
                 task_kwargs['reward_prob'] = args.reward_prob
+            if hasattr(args, 'mdp_reward_boundary') and args.mdp_reward_boundary is not None:
+                task_kwargs['reward_boundary'] = args.mdp_reward_boundary
+            if hasattr(args, 'mdp_permute_actions') and args.mdp_permute_actions is not None:
+                task_kwargs['permute_actions'] = args.mdp_permute_actions
                 
         return MDPEnvironment(**task_kwargs)
     else:
@@ -397,6 +401,8 @@ def train_drqn_mdp(agent, environment, training_config, logger, log_dir):
 
     episode_rewards = []
     training_episodes = []
+    block_size = int(getattr(training_config, 'mdp_block_size', 0) or 0)
+    num_blocks = int(getattr(training_config, 'mdp_num_blocks', 0) or 0)
 
     for episode in range(training_config.num_episodes):
         # Reset environment for a new trial
@@ -444,6 +450,9 @@ def train_drqn_mdp(agent, environment, training_config, logger, log_dir):
             observation = next_observation
 
         # Store per-episode trajectory and activations for analysis
+        block_index = None
+        if block_size > 0:
+            block_index = (episode // block_size) + 1
         training_episodes.append({
             'states': episode_states,
             'actions': episode_actions,
@@ -451,6 +460,7 @@ def train_drqn_mdp(agent, environment, training_config, logger, log_dir):
             'dones': episode_dones,
             'activations': episode_activations,
             'total_reward': float(total_reward),
+            'block': block_index,
         })
 
         # Train DRQN using trajectory
@@ -482,6 +492,9 @@ def train_drqn_mdp(agent, environment, training_config, logger, log_dir):
             model_path = os.path.join(log_dir, f"model_episode_{episode + 1}.pt")
             agent.save_model(model_path)
             logger.info(f"Model saved to {model_path}")
+        if block_size > 0 and (episode + 1) % block_size == 0:
+            suffix = f"/{num_blocks}" if num_blocks > 0 else ""
+            logger.info(f"Completed MDP block {episode // block_size + 1}{suffix}")
 
     # Save training trajectories and activations (MDP)
     if training_episodes:
@@ -508,6 +521,8 @@ def train_gru_mdp(agent, environment, training_config, logger, log_dir):
     
     episode_rewards = []
     training_episodes = []
+    block_size = int(getattr(training_config, 'mdp_block_size', 0) or 0)
+    num_blocks = int(getattr(training_config, 'mdp_num_blocks', 0) or 0)
 
     for episode in range(training_config.num_episodes):
         # Reset environment for a new trial
@@ -543,12 +558,16 @@ def train_gru_mdp(agent, environment, training_config, logger, log_dir):
         episode_rewards.append(total_reward)
 
         # Store per-episode trajectory and activations for analysis
+        block_index = None
+        if block_size > 0:
+            block_index = (episode // block_size) + 1
         training_episodes.append({
             'states': states,
             'actions': actions,
             'rewards': rewards,
             'activations': activations,
             'total_reward': float(total_reward),
+            'block': block_index,
         })
 
         # Evaluate periodically
@@ -567,6 +586,9 @@ def train_gru_mdp(agent, environment, training_config, logger, log_dir):
             model_path = os.path.join(log_dir, f"model_episode_{episode + 1}.pt")
             agent.save_model(model_path)
             logger.info(f"Model saved to {model_path}")
+        if block_size > 0 and (episode + 1) % block_size == 0:
+            suffix = f"/{num_blocks}" if num_blocks > 0 else ""
+            logger.info(f"Completed MDP block {episode // block_size + 1}{suffix}")
 
     # Save training trajectories and activations (MDP)
     if training_episodes:
@@ -918,6 +940,14 @@ def main():
             env_cfg_dict['reward_prob'] = args.reward_prob
         elif hasattr(environment, 'task') and hasattr(environment.task, 'reward_prob'):
             env_cfg_dict['reward_prob'] = float(environment.task.reward_prob)
+        if hasattr(args, 'mdp_reward_boundary') and args.mdp_reward_boundary is not None:
+            env_cfg_dict['reward_boundary'] = args.mdp_reward_boundary
+        elif hasattr(environment, 'task') and hasattr(environment.task, 'reward_boundary'):
+            env_cfg_dict['reward_boundary'] = str(environment.task.reward_boundary)
+        if hasattr(args, 'mdp_permute_actions') and args.mdp_permute_actions is not None:
+            env_cfg_dict['permute_actions'] = bool(args.mdp_permute_actions)
+        elif hasattr(environment, 'task') and hasattr(environment.task, 'permute_actions'):
+            env_cfg_dict['permute_actions'] = bool(environment.task.permute_actions)
 
     save_run_config(
         config_yaml_path,

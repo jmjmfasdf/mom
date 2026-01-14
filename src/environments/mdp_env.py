@@ -8,6 +8,10 @@ Then deliver reward and terminate.
 Transition parameter `trans_prob` is the probability of a rare (undesired) transition:
 - If a1 selects the path toward B1, go to B2 with probability trans_prob (rare),
   otherwise to B1 with probability 1 - trans_prob (common). Symmetric for selecting B2.
+Reward probabilities drift with Gaussian noise and are kept within bounds via
+either reflecting or clipping (see `reward_boundary`).
+When `permute_actions` is enabled, left/right action mappings are randomized
+each trial (observations do not encode the mapping).
 """
 
 import numpy as np
@@ -22,6 +26,9 @@ class TwoStepTask:
       - phase = 0: show s1 (1,0,0) until agent picks a1 in {0,1}
       - phase = 1: show s2 one-hot depending on transition; wait for a2 in {0,1}
       - phase = 2: terminal; reward exposed via step() return
+    Action permutation:
+      - when enabled, action indices are remapped per trial to simulate
+        left/right position randomization.
     """
 
     def __init__(
@@ -30,6 +37,8 @@ class TwoStepTask:
         s2_duration=1,
         trans_prob=0.3,
         reward_prob=0.5,
+        reward_boundary="reflect",
+        permute_actions=True,
         reward_sd=0.025,
         reward_min=0.25,
         reward_max=0.75,
@@ -40,6 +49,10 @@ class TwoStepTask:
 
         # Task parameters
         self.trans_prob = float(trans_prob)  # probability of rare transition
+        self.reward_boundary = str(reward_boundary).lower()
+        if self.reward_boundary not in ("reflect", "clip"):
+            raise ValueError("reward_boundary must be 'reflect' or 'clip'")
+        self.permute_actions = bool(permute_actions)
         self.reward_sd = float(reward_sd)
         self.reward_min = float(reward_min)
         self.reward_max = float(reward_max)
@@ -54,20 +67,27 @@ class TwoStepTask:
         self.stage2 = None  # 1: B1, 2: B2
         self.choice1 = None
         self.choice2 = None
+        self.action1 = None
+        self.action2 = None
         self.reward = None
         self.completed = False
         self.common = None  # whether transition followed desired mapping
         self.choice = None  # backward-compat alias for choice1
+        self.stage1_action_map = None
+        self.stage2_action_map = None
 
     def reset(self):
         self.phase = 0
         self.stage2 = None
         self.choice1 = None
         self.choice2 = None
+        self.action1 = None
+        self.action2 = None
         self.reward = None
         self.completed = False
         self.common = None
         self.choice = None
+        self._init_action_maps()
         return np.array([1.0, 0.0, 0.0], dtype=float)  # s1
 
     def configure(self, trial_data, trial_settings):
@@ -104,20 +124,41 @@ class TwoStepTask:
         p = float(self.reward_probs[stage_index, self.choice2])
         return 1 if np.random.rand() < p else 0
 
+    def _init_action_maps(self):
+        if self.permute_actions:
+            self.stage1_action_map = np.random.permutation(2)
+            self.stage2_action_map = {
+                1: np.random.permutation(2),
+                2: np.random.permutation(2),
+            }
+        else:
+            self.stage1_action_map = np.array([0, 1], dtype=int)
+            self.stage2_action_map = {
+                1: np.array([0, 1], dtype=int),
+                2: np.array([0, 1], dtype=int),
+            }
+
+    def _apply_reward_boundary(self, values):
+        if self.reward_boundary == "reflect":
+            span = self.reward_max - self.reward_min
+            if span <= 0:
+                return np.clip(values, self.reward_min, self.reward_max)
+            shifted = np.mod(values - self.reward_min, 2.0 * span)
+            reflected = np.where(shifted <= span, shifted, 2.0 * span - shifted)
+            return reflected + self.reward_min
+        return np.clip(values, self.reward_min, self.reward_max)
+
     def _drift_reward_probs(self):
         noise = np.random.normal(0.0, self.reward_sd, size=self.reward_probs.shape)
-        self.reward_probs = np.clip(
-            self.reward_probs + noise,
-            self.reward_min,
-            self.reward_max,
-        )
+        self.reward_probs = self._apply_reward_boundary(self.reward_probs + noise)
 
     def step(self, action):
         if self.phase == 0:
             # Expect a1 in {0,1}
             if action in (0, 1):
-                self.choice1 = action
-                self.choice = action
+                self.action1 = int(action)
+                self.choice1 = int(self.stage1_action_map[self.action1])
+                self.choice = self.choice1
                 self.stage2 = self._sample_stage2(self.choice1)
                 self.phase = 1
                 obs = self._observe()
@@ -128,7 +169,11 @@ class TwoStepTask:
         elif self.phase == 1:
             # Expect a2 in {0,1}
             if action in (0, 1):
-                self.choice2 = action
+                self.action2 = int(action)
+                stage_map = self.stage2_action_map.get(self.stage2)
+                if stage_map is None:
+                    stage_map = np.array([0, 1], dtype=int)
+                self.choice2 = int(stage_map[self.action2])
                 self.reward = self._sample_reward()
                 self.phase = 2
                 self.completed = True
@@ -153,6 +198,8 @@ class TwoStepTask:
     def extract_trial_abstract(self):
         """Extract trial info"""
         return {
+            "action1": self.action1,
+            "action2": self.action2,
             "choice1": self.choice1,
             "choice2": self.choice2,
             "choice": self.choice,  # Backward compatibility
@@ -160,6 +207,10 @@ class TwoStepTask:
             "reward": self.reward,
             "common": self.common,
             "completed": self.completed,
+            "stage1_action_map": None if self.stage1_action_map is None else self.stage1_action_map.tolist(),
+            "stage2_action_map": None if self.stage2_action_map is None else {
+                k: v.tolist() for k, v in self.stage2_action_map.items()
+            },
         }
 
 

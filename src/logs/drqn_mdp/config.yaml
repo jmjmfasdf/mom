@@ -1,8 +1,11 @@
 env_config:
   name: mdp
+  permute_actions: true
+  reward_boundary: reflect
+  reward_prob: 0.7
   s1_duration: 1
   s2_duration: 1
-  trans_prob: 0.2
+  trans_prob: 0.3
 environment: mdp
 model: drqn
 model_config:
@@ -22,7 +25,9 @@ training_config:
   eval_every: 100
   eval_period: 100
   log_dir: ./logs
-  num_episodes: 100
+  mdp_block_size: 67
+  mdp_num_blocks: 3
+  num_episodes: 201
   num_rollouts: 50
   save_dir: ./models
   save_every: 100
