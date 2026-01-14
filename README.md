@@ -77,11 +77,11 @@ Use the parameter groups below to switch model/environment and tune the run.
 ### T-maze (tmaze)
 
 ```
-            [L+1] Up terminal (reward if goal_up)
-                |
+                                        [L+1] Up terminal (reward if goal_up)
+                                            |
 [0] start - [1] - ... - [L-1] - [L] junction
-                |
-            [L+2] Down terminal (reward if not goal_up)
+                                            |
+                                        [L+2] Down terminal (reward if not goal_up)
 ```
 
 Variable mapping (creation in `src/main.py` and `src/environments/tmaze_env.py`):
