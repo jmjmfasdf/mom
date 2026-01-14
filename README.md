@@ -176,11 +176,11 @@ Observation modes:
                                 /                                 \
       common (1 - trans_prob)                                 rare (trans_prob)
                        v                                             v
-            B1 (obs [0,1,0])                                             B2 (obs [0,0,1])
-                a2 in {0,1}                                                      a2 in {0,1}
+            B1 (obs [0,1,0])                                           B2 (obs [0,0,1])
+                a2 in {0,1}                                                   a2 in {0,1}
         r ~ Bernoulli(p[B1,a2])                                   r ~ Bernoulli(p[B2,a2])
-                        \                                     /
-                           \------- terminal ------/
+                        \                                         /
+                                     \------- terminal ------/
 ```
 
 Notes:
